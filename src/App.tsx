@@ -109,14 +109,14 @@ export default function App() {
                <div className="pt-4 border-t border-slate-100">
                   <h4 className="text-sm font-semibold text-slate-700 mb-4">Experimental Features</h4>
                   <button 
-                    disabled={true}
-                    className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-400 p-4 rounded-xl cursor-not-allowed border border-slate-200"
-                    title="Available in local development only"
+                    onClick={() => startInterview(InterviewType.HR, 'voice')}
+                    disabled={!profile.targetRole}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white p-4 rounded-xl hover:bg-slate-800 transition shadow-lg disabled:opacity-50"
                   >
                     <Mic className="w-5 h-5" />
-                    <span>Start Voice Interview (Live API Unavailable in Secure Mode)</span>
+                    <span>Start Voice Interview (Live API)</span>
                   </button>
-                  <p className="text-xs text-slate-400 mt-2 text-center">Voice mode requires backend WebSocket proxy for secure Vercel deployment.</p>
+                  <p className="text-xs text-slate-400 mt-2 text-center">Requires microphone permissions. Uses Gemini Live API.</p>
                </div>
             </div>
           </div>

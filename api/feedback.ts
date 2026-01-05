@@ -11,7 +11,7 @@ export default async function handler(req: Request) {
   try {
     const { history, jobTitle } = await req.json();
     const ai = getGeminiClient();
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3-flash-preview";
     const prompt = `
       Analyze this interview transcript for the role of ${jobTitle}.
       Provide scores (0-100) and feedback.

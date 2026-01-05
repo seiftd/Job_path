@@ -11,7 +11,7 @@ export default async function handler(req: Request) {
   try {
     const { profile, lang } = await req.json();
     const ai = getGeminiClient();
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3-flash-preview";
     const prompt = `
       Analyze this resume data and suggest 6 suitable job roles (mix of junior/senior if applicable).
       Resume: ${JSON.stringify(profile)}

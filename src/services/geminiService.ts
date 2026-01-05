@@ -1,3 +1,4 @@
+import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
 import { UserProfile, JobRecommendation } from "../types";
 
 // Helper to call backend APIs
@@ -60,8 +61,6 @@ export const sendChatMessage = async (
   }
 };
 
-// Live API is strictly client-side WebSocket based and requires direct API key exposure.
-// For a secure Vercel deployment without a dedicated websocket proxy server, we must disable this feature.
 export const connectLiveSession = async (
   jobTitle: string, 
   interviewType: string,
@@ -69,16 +68,45 @@ export const connectLiveSession = async (
   onTextData: (text: string) => void,
   onClose: () => void
 ) => {
-  console.warn("Live API is not available in secure mode.");
-  alert("Voice Interview mode requires a backend WebSocket server and is currently disabled for security.");
-  onClose();
-  return Promise.resolve({
-    sendRealtimeInput: () => {},
-    close: () => {}
-  });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const model = 'gemini-2.5-flash-native-audio-preview-09-2025';
+  
+  const config = {
+    model,
+    callbacks: {
+      onopen: () => console.log('Live session opened'),
+      onmessage: (message: LiveServerMessage) => {
+        const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+        if (base64Audio) {
+          onAudioData(base64Audio);
+        }
+        
+        if (message.serverContent?.modelTurn?.parts?.[0]?.text) {
+             onTextData(message.serverContent?.modelTurn?.parts?.[0]?.text);
+        }
+        
+        if (message.serverContent?.interrupted) {
+          console.log("Model interrupted");
+        }
+      },
+      onclose: () => onClose(),
+      onerror: (e: any) => {
+        console.error("Live Error", e);
+        onClose();
+      }
+    },
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+      },
+      systemInstruction: `You are a professional interviewer conducting a ${interviewType} interview for the position of ${jobTitle}. Be professional, concise, and ask one question at a time. Start by welcoming the candidate.`,
+    }
+  };
+
+  return ai.live.connect(config);
 };
 
-// Audio Utils (kept for future implementation)
 export function createPCM16Blob(data: Float32Array): { data: string, mimeType: string } {
   const l = data.length;
   const int16 = new Int16Array(l);

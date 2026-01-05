@@ -10,7 +10,7 @@ export default async function handler(req: Request) {
   try {
     const { text, lang } = await req.json();
     const ai = getGeminiClient();
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3-flash-preview";
     const prompt = `Rewrite the following professional experience description to be more impactful, using action verbs and quantifying results where possible. Keep it concise. Language: ${lang}. Text: "${text}"`;
 
     const response = await ai.models.generateContent({

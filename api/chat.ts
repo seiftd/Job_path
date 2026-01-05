@@ -10,7 +10,7 @@ export default async function handler(req: Request) {
   try {
     const { message, history, systemInstruction } = await req.json();
     const ai = getGeminiClient();
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3-flash-preview";
 
     // Transform history for Gemini API
     // The SDK chat format expects an array of contents with role 'user' or 'model'

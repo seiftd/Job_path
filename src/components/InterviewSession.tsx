@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, Language, InterviewSessionConfig, ViewState } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { sendChatMessage, connectLiveSession, createPCM16Blob, decodeAudioData, generateInterviewFeedback } from '../services/geminiService';
+import { sendChatMessage, connectLiveSession, decodeAudioData, generateInterviewFeedback, createPCM16Blob } from '../services/geminiService';
 import { Mic, Send, StopCircle, User, Bot } from 'lucide-react';
 
 interface Props {
@@ -22,10 +22,23 @@ export const InterviewSession: React.FC<Props> = ({ config, profile, lang, onEnd
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
 
+  // Refs for Live Audio
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const nextStartTimeRef = useRef<number>(0);
+
   // Auto scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopLiveSession();
+    };
+  }, []);
 
   const systemInstruction = `You are a professional interviewer conducting a ${config.type} interview for the position of ${config.jobTitle}. 
   The candidate's name is ${profile.name}.
@@ -38,11 +51,17 @@ export const InterviewSession: React.FC<Props> = ({ config, profile, lang, onEnd
     if (config.mode === 'text' && !hasStartedRef.current) {
       hasStartedRef.current = true;
       setIsProcessing(true);
-      // Send initial trigger to AI
-      sendChatMessage("Start interview", [], systemInstruction).then(text => {
-        if(text) setMessages([{ sender: 'ai', text }]);
-        setIsProcessing(false);
-      });
+      
+      // Send initial trigger to AI via Serverless API
+      sendChatMessage("Start interview", [], systemInstruction)
+        .then(text => {
+          if(text) setMessages([{ sender: 'ai', text }]);
+          setIsProcessing(false);
+        })
+        .catch(err => {
+          console.error(err);
+          setIsProcessing(false);
+        });
     }
   }, [config.mode]);
 
@@ -54,39 +73,104 @@ export const InterviewSession: React.FC<Props> = ({ config, profile, lang, onEnd
     }
   }, [config.mode]);
 
+  const stopLiveSession = () => {
+    if (processorRef.current) {
+        processorRef.current.disconnect();
+        processorRef.current = null;
+    }
+    if (inputSourceRef.current) {
+        inputSourceRef.current.disconnect();
+        inputSourceRef.current = null;
+    }
+    if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+    }
+    setLiveConnected(false);
+  };
+
   const startLiveSession = async () => {
-    // This will now just show an alert as implemented in service
-    await connectLiveSession(
-      config.jobTitle, 
-      config.type,
-      () => {},
-      () => {},
-      () => setLiveConnected(false)
-    );
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      const sessionPromise = connectLiveSession(
+        config.jobTitle, 
+        config.type,
+        async (base64Audio) => {
+            if(!audioContextRef.current) return;
+            // Play Audio
+            const outputCtx = new AudioContextClass({ sampleRate: 24000 });
+            const buffer = await decodeAudioData(base64Audio, outputCtx);
+            
+            const source = outputCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(outputCtx.destination);
+            
+            const currentTime = outputCtx.currentTime;
+            const startTime = Math.max(currentTime, nextStartTimeRef.current);
+            source.start(startTime);
+            nextStartTimeRef.current = startTime + buffer.duration;
+        },
+        (text) => {
+           // Handle text if needed
+        },
+        () => setLiveConnected(false)
+      );
+
+      const ctx = audioContextRef.current;
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcmBlob = createPCM16Blob(inputData);
+        sessionPromise.then(session => {
+            session.sendRealtimeInput({ media: pcmBlob });
+        });
+      };
+
+      source.connect(processor);
+      processor.connect(ctx.destination);
+      
+      inputSourceRef.current = source;
+      processorRef.current = processor;
+      setLiveConnected(true);
+    } catch (err) {
+       console.error(err);
+       alert("Failed to start voice session");
+       setLiveConnected(false);
+    }
   };
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
     
     const userMsg = inputText;
-    setMessages(prev => [...prev, { sender: 'user', text: userMsg }]);
+    // Optimistic update
+    const newMessages = [...messages, { sender: 'user' as const, text: userMsg }];
+    setMessages(newMessages);
     setInputText("");
     setIsProcessing(true);
 
     try {
-      // Pass current history to the stateless API
-      const responseText = await sendChatMessage(userMsg, messages, systemInstruction);
+      // Use the stateless API
+      const responseText = await sendChatMessage(userMsg, newMessages, systemInstruction);
       if (responseText) {
         setMessages(prev => [...prev, { sender: 'ai', text: responseText }]);
       }
     } catch (e) {
       console.error(e);
+      setMessages(prev => [...prev, { sender: 'ai', text: "Error connecting to interviewer. Please try again." }]);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const finishSession = async () => {
+    stopLiveSession();
     setIsProcessing(true);
     const feedbackData = await generateInterviewFeedback(messages, config.jobTitle);
     setIsProcessing(false);
@@ -96,14 +180,17 @@ export const InterviewSession: React.FC<Props> = ({ config, profile, lang, onEnd
   if (config.mode === 'voice') {
     return (
       <div className="flex flex-col items-center justify-center h-[600px] bg-slate-900 rounded-2xl text-white relative overflow-hidden">
+        {/* Visualizer Placeholder */}
+        <div className="absolute inset-0 opacity-20 bg-gradient-to-b from-blue-900 to-slate-900"></div>
+        
         <div className="z-10 text-center space-y-8">
-            <div className={`w-32 h-32 rounded-full flex items-center justify-center bg-slate-700`}>
+            <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${liveConnected ? 'bg-brand-500 shadow-[0_0_50px_rgba(14,165,233,0.5)] animate-pulse' : 'bg-slate-700'}`}>
                 <Mic className="w-12 h-12 text-white" />
             </div>
             
             <div>
-                <h3 className="text-2xl font-semibold mb-2">Voice Mode Unavailable</h3>
-                <p className="text-slate-400">Please use Text mode for secure serverless environment.</p>
+                <h3 className="text-2xl font-semibold mb-2">{liveConnected ? t.listening : "Connecting..."}</h3>
+                <p className="text-slate-400">Interviewing for: {config.jobTitle}</p>
             </div>
 
             <button 
@@ -184,4 +271,4 @@ export const InterviewSession: React.FC<Props> = ({ config, profile, lang, onEnd
         </div>
     </div>
   );
-};
+}
