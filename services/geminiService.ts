@@ -27,7 +27,7 @@ export const analyzeProfileForJobs = async (profile: UserProfile, lang: string):
   try {
     const model = "gemini-3-flash-preview";
     const prompt = `
-      Analyze this resume data and suggest 3 suitable job roles.
+      Analyze this resume data and suggest 6 suitable job roles (mix of junior/senior if applicable).
       Resume: ${JSON.stringify(profile)}
       Language of output: ${lang} (Provide titles in English but description in target language).
       Return JSON only.

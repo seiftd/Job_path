@@ -60,7 +60,9 @@ export const TRANSLATIONS = {
     recent_interviews: "Recent Interviews",
     view_details: "View Details",
     no_interviews: "No interviews yet. Start one to practice!",
-    date: "Date"
+    date: "Date",
+    search_jobs_placeholder: "Filter jobs by title, skill, or keyword...",
+    no_jobs_found: "No jobs found matching your search."
   },
   [Language.ARABIC]: {
     app_name: "Job_path",
@@ -121,7 +123,9 @@ export const TRANSLATIONS = {
     recent_interviews: "المقابلات الأخيرة",
     view_details: "عرض التفاصيل",
     no_interviews: "لا توجد مقابلات بعد. ابدأ واحدة للتدريب!",
-    date: "التاريخ"
+    date: "التاريخ",
+    search_jobs_placeholder: "تصفية الوظائف حسب المسمى أو المهارة...",
+    no_jobs_found: "لم يتم العثور على وظائف مطابقة لبحثك."
   }
 };
 
