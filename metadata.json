@@ -1,0 +1,7 @@
+{
+  "name": "Job_path",
+  "description": "A smart resume builder, career path recommender, and AI mock interviewer supporting English and Arabic.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
